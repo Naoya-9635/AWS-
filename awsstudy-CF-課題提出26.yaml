@@ -70,8 +70,8 @@ Resources:
         ToPort: 22
         CidrIp: 106.154.148.192/32
       - IpProtocol: tcp
-        FromPort: 8080
-        ToPort: 8080
+        FromPort: 80
+        ToPort: 80
         CidrIp: 0.0.0.0/0
       - IpProtocol: tcp
         FromPort: 8080
@@ -200,7 +200,7 @@ Resources:
     Properties:
       Scheme: internet-facing       
       SecurityGroups:
-        - !Ref ALBSecurityGroup 
+        - !Ref EC2secGroup 
       Subnets:
         - !Ref PublicMysubnet01
         - !Ref PublicMysubnet02        
