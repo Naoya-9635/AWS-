@@ -3,6 +3,11 @@ Parameters:
   DBPassword:
     Type: String
     NoEcho: true
+  
+  LogSuffix:
+    Type: String
+    Default: my-webACL
+    Description: "test"
 
 Resources: 
   MyVPC:
@@ -69,6 +74,10 @@ Resources:
         FromPort: 22
         ToPort: 22
         CidrIp: 106.154.148.192/32
+      - IpProtocol: tcp
+        FromPort: 8080
+        ToPort: 8080
+        CidrIp: 0.0.0.0/0
       - IpProtocol: tcp
         FromPort: 8080
         ToPort: 8080
@@ -228,4 +237,92 @@ Resources:
       Protocol: HTTP          
       DefaultActions:
       - Type: forward
-        TargetGroupArn: !Ref MyTargetGroup   
+        TargetGroupArn: !Ref MyTargetGroup  
+
+  MycloudWatchAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: awsstudy-ec2-cloudwatchalarm
+      AlarmDescription: "AWS-EC2のCPU使用率が5%以上になりました"
+      Namespace: "AWS/EC2"      
+      Dimensions: 
+        - Name: InstanceId
+          Value: !Ref MyEC2Instance  
+      MetricName: "CPUUtilization"  
+      Unit: "Percent"
+      Period: 300
+      Statistic: "Average"
+      Threshold: 5
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      EvaluationPeriods: 3
+      DatapointsToAlarm: 2
+      TreatMissingData: missing
+
+      ActionsEnabled: true
+      AlarmActions: 
+        - arn:aws:sns:ap-northeast-1:644533207784:CloudWatchAlarm
+
+  WebACL:
+    Type: AWS::WAFv2::WebACL
+    Properties:
+      DefaultAction: 
+         Allow: {}
+      Scope: "REGIONAL"
+      VisibilityConfig:
+        SampledRequestsEnabled: true
+        CloudWatchMetricsEnabled: true
+        MetricName: "MyWebACLMetric"
+      Rules:
+       - Name: "AWSManagedCommonRuleSet"
+         Priority: 1
+         Statement:
+           ManagedRuleGroupStatement:
+            VendorName: "AWS"
+            Name: "AWSManagedRulesCommonRuleSet" 
+         OverrideAction:
+            None: {}
+         VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true 
+            MetricName: "CommonRuleSetMetric"
+
+  WAFLogConfig:  
+    Type: AWS::WAFv2::LoggingConfiguration
+    DependsOn: 
+    - WAFLogsResourcePolicy
+    - WAFLogGroup
+    Properties:     
+      LogDestinationConfigs: 
+      -  !GetAtt WAFLogGroup.Arn
+      ResourceArn: !GetAtt WebACL.Arn 
+
+  WAFLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub aws-waf-logs-${LogSuffix}
+      RetentionInDays: 30
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+
+  WebACLAssociation:
+    Type: AWS::WAFv2::WebACLAssociation
+    Properties:
+      ResourceArn: !GetAtt MyALB.LoadBalancerArn
+      WebACLArn: !GetAtt WebACL.Arn
+
+  WAFLogsResourcePolicy:
+    Type: AWS::Logs::ResourcePolicy   
+    Properties:
+      PolicyName: "WAFLogsPolicy" 
+      PolicyDocument: !Sub |
+        {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {"Service": "waf.amazonaws.com"} ,
+              "Action": ["logs:CreateLogStream","logs:PutLogEvents"],
+              "Resource": "${WAFLogGroup.Arn}:*"
+            }
+          ]
+        }    
