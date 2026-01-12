@@ -9,6 +9,9 @@ Parameters:
     Default: my-webACL
     Description: "test"
 
+  AlarmTopicARN:
+    Type: String
+
 Resources: 
   MyVPC:
     Type: AWS::EC2::VPC
@@ -39,7 +42,7 @@ Resources:
      MapPublicIpOnLaunch: true
      Tags:
        - Key: Name
-         Value: aws-studyCF-Publicsubnet01
+         Value: aws-studyCF-Publicsubnet02
 
   PrivateMysubnet01:
     Type: AWS::EC2::Subnet
@@ -67,17 +70,9 @@ Resources:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupName: awsstudyCF-sg
-      GroupDescription: true
+      GroupDescription: "Security group EC2"
       VpcId: !Ref MyVPC
       SecurityGroupIngress:
-      - IpProtocol: tcp
-        FromPort: 22
-        ToPort: 22
-        CidrIp: 106.154.148.192/32
-      - IpProtocol: tcp
-        FromPort: 8080
-        ToPort: 8080
-        CidrIp: 0.0.0.0/0
       - IpProtocol: tcp
         FromPort: 8080
         ToPort: 8080
@@ -90,7 +85,7 @@ Resources:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupName: awsstudyCF-rdssg
-      GroupDescription: true
+      GroupDescription: "Security group RDS"
       VpcId: !Ref MyVPC
       SecurityGroupIngress:
       - IpProtocol: tcp
@@ -113,7 +108,7 @@ Resources:
        - !Ref EC2secGroup
       Tags:
         - Key: Name
-          Value: aws-studyCF-EC2insatance
+          Value: aws-studyCF-EC2instance
   
   MyInternetGateway:
    Type: AWS::EC2::InternetGateway
@@ -137,10 +132,16 @@ Resources:
       DestinationCidrBlock: 0.0.0.0/0
       GatewayId: !Ref MyInternetGateway
 
-  PublicSubnetRouteTableAssociation:
+  PublicSubnetRouteTableAssociation01:
     Type: AWS::EC2::SubnetRouteTableAssociation
     Properties:
       SubnetId: !Ref PublicMysubnet01
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicSubnetRouteTableAssociation02:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicMysubnet02
       RouteTableId: !Ref PublicRouteTable
 
   PrivateRouteTable:
@@ -243,7 +244,7 @@ Resources:
     Type: AWS::CloudWatch::Alarm
     Properties:
       AlarmName: awsstudy-ec2-cloudwatchalarm
-      AlarmDescription: "AWS-EC2のCPU使用率が5%以上になりました"
+      AlarmDescription: "AWS-EC2のCPU使用率が0.5%以上になりました"
       Namespace: "AWS/EC2"      
       Dimensions: 
         - Name: InstanceId
@@ -252,7 +253,7 @@ Resources:
       Unit: "Percent"
       Period: 300
       Statistic: "Average"
-      Threshold: 5
+      Threshold: 0.5
       ComparisonOperator: GreaterThanOrEqualToThreshold
       EvaluationPeriods: 3
       DatapointsToAlarm: 2
@@ -260,7 +261,7 @@ Resources:
 
       ActionsEnabled: true
       AlarmActions: 
-        - arn:aws:sns:ap-northeast-1:644533207784:CloudWatchAlarm
+        - !Ref AlarmTopicARN
 
   WebACL:
     Type: AWS::WAFv2::WebACL
