@@ -74,6 +74,10 @@ Resources:
       VpcId: !Ref MyVPC
       SecurityGroupIngress:
       - IpProtocol: tcp
+        FromPort: 22
+        ToPort: 22
+        CidrIp: 106.154.148.192/32     
+      - IpProtocol: tcp
         FromPort: 8080
         ToPort: 8080
         SourceSecurityGroupId: !Ref ALBSecurityGroup
@@ -177,7 +181,7 @@ Resources:
       DBName: awsstudy
       DBSubnetGroupName: !Ref MyDBsubnetGroup
       Engine: mysql
-      EngineVersion: 8.0.39
+      EngineVersion: 8.0.40
       MasterUsername: root
       MasterUserPassword: !Ref DBPassword
       MultiAZ: false
