@@ -1,0 +1,333 @@
+AWSTemplateFormatVersion: 2010-09-09
+Parameters:
+  DBPassword:
+    Type: String
+    NoEcho: true
+  
+  LogSuffix:
+    Type: String
+    Default: my-webACL
+    Description: "test"
+
+  AlarmTopicARN:
+    Type: String
+
+Resources: 
+  MyVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsSupport: true
+      Tags:
+        - Key: Name
+          Value: MyVPC2fromCF
+  
+  PublicMysubnet01:
+    Type: AWS::EC2::Subnet
+    Properties:
+     VpcId: !Ref MyVPC
+     AvailabilityZone: ap-northeast-1a
+     CidrBlock: 10.0.1.0/24
+     MapPublicIpOnLaunch: true
+     Tags:
+       - Key: Name
+         Value: aws-studyCF-Publicsubnet01
+  
+  PublicMysubnet02:
+    Type: AWS::EC2::Subnet
+    Properties:
+     VpcId: !Ref MyVPC
+     AvailabilityZone: ap-northeast-1c
+     CidrBlock: 10.0.2.0/24
+     MapPublicIpOnLaunch: true
+     Tags:
+       - Key: Name
+         Value: aws-studyCF-Publicsubnet02
+
+  PrivateMysubnet01:
+    Type: AWS::EC2::Subnet
+    Properties:
+     VpcId: !Ref MyVPC
+     AvailabilityZone: ap-northeast-1a
+     CidrBlock: 10.0.3.0/24
+     MapPublicIpOnLaunch: false
+     Tags:
+       - Key: Name
+         Value: aws-studyCF-Privatesubnet01  
+
+  PrivateMysubnet02:
+    Type: AWS::EC2::Subnet
+    Properties:
+     VpcId: !Ref MyVPC
+     AvailabilityZone: ap-northeast-1c
+     CidrBlock: 10.0.4.0/24
+     MapPublicIpOnLaunch: false
+     Tags:
+       - Key: Name
+         Value: aws-studyCF-Privatesubnet02       
+
+  EC2secGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: awsstudyCF-sg
+      GroupDescription: "Security group EC2"
+      VpcId: !Ref MyVPC
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: 22
+        ToPort: 22
+        CidrIp: 106.154.148.192/32     
+      - IpProtocol: tcp
+        FromPort: 8080
+        ToPort: 8080
+        SourceSecurityGroupId: !Ref ALBSecurityGroup
+      Tags:
+      - Key: Name
+        Value: aws-studyCF-EC2secGroup
+  
+  RDSsecGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: awsstudyCF-rdssg
+      GroupDescription: "Security group RDS"
+      VpcId: !Ref MyVPC
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: 3306
+        ToPort: 3306
+        SourceSecurityGroupId: !Ref EC2secGroup
+      Tags:
+      - Key: Name
+        Value: aws-studyCF-RDSsecGroup
+  
+  MyEC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      KeyName: ayoan
+      DisableApiTermination: true
+      ImageId: ami-095af7cb7ddb447ef
+      InstanceType: t2.micro
+      SubnetId: !Ref PublicMysubnet01
+      SecurityGroupIds: 
+       - !Ref EC2secGroup
+      Tags:
+        - Key: Name
+          Value: aws-studyCF-EC2instance
+  
+  MyInternetGateway:
+   Type: AWS::EC2::InternetGateway
+
+  AttachGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref MyVPC
+      InternetGatewayId: !Ref MyInternetGateway
+
+  PublicRouteTable:
+   Type: AWS::EC2::RouteTable
+   Properties:
+    VpcId: !Ref MyVPC
+
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: AttachGateway
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref MyInternetGateway
+
+  PublicSubnetRouteTableAssociation01:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicMysubnet01
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicSubnetRouteTableAssociation02:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicMysubnet02
+      RouteTableId: !Ref PublicRouteTable
+
+  PrivateRouteTable:
+   Type: AWS::EC2::RouteTable
+   Properties:
+    VpcId: !Ref MyVPC
+    
+  PrivateSubnetRouteTableAssociation2:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateMysubnet01
+      RouteTableId: !Ref PrivateRouteTable
+
+  MyDBsubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+     DBSubnetGroupDescription: "My DB subnet group"
+     SubnetIds: 
+      - !Ref PrivateMysubnet01
+      - !Ref PrivateMysubnet02      
+     DBSubnetGroupName: rds-ec2-db-subnetgroup 
+
+  MyrdsDBInstance:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      AllocatedStorage: 20
+      DBInstanceClass: db.t4g.micro
+      AllowMajorVersionUpgrade: false
+      AutoMinorVersionUpgrade: false
+      AvailabilityZone: ap-northeast-1a
+      BackupRetentionPeriod: 0
+      DBInstanceIdentifier: aws-study
+      DBName: awsstudy
+      DBSubnetGroupName: !Ref MyDBsubnetGroup
+      Engine: mysql
+      EngineVersion: 8.0.40
+      MasterUsername: root
+      MasterUserPassword: !Ref DBPassword
+      MultiAZ: false
+      Port: 3306
+      PubliclyAccessible: false
+      StorageType: gp2
+      VPCSecurityGroups:
+        - Ref: RDSsecGroup
+      Tags:
+        - Key: Name
+          Value: aws-studyCF-rdsinsatance
+
+  ALBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: "Security group for ALB"
+      VpcId: !Ref MyVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+
+  MyALB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Scheme: internet-facing       
+      SecurityGroups:
+        - !Ref ALBSecurityGroup 
+      Subnets:
+        - !Ref PublicMysubnet01
+        - !Ref PublicMysubnet02        
+      Type: application
+
+  MyTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      VpcId: !Ref MyVPC
+      Port: 8080
+      Protocol: HTTP
+      TargetType: instance
+      Targets:
+        - Id: !Ref MyEC2Instance
+          Port: 8080
+      HealthCheckProtocol: HTTP
+      HealthCheckPort: "8080"
+      HealthCheckPath: /
+      HealthyThresholdCount: 5
+      HealthCheckIntervalSeconds: 30
+      HealthCheckTimeoutSeconds: 5
+      UnhealthyThresholdCount: 2
+
+  MyListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref MyALB
+      Port: 80                
+      Protocol: HTTP          
+      DefaultActions:
+      - Type: forward
+        TargetGroupArn: !Ref MyTargetGroup  
+
+  MycloudWatchAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: awsstudy-ec2-cloudwatchalarm
+      AlarmDescription: "AWS-EC2のCPU使用率が0.5%以上になりました"
+      Namespace: "AWS/EC2"      
+      Dimensions: 
+        - Name: InstanceId
+          Value: !Ref MyEC2Instance  
+      MetricName: "CPUUtilization"  
+      Unit: "Percent"
+      Period: 300
+      Statistic: "Average"
+      Threshold: 0.5
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      EvaluationPeriods: 3
+      DatapointsToAlarm: 2
+      TreatMissingData: missing
+
+      ActionsEnabled: true
+      AlarmActions: 
+        - !Ref AlarmTopicARN
+
+  WebACL:
+    Type: AWS::WAFv2::WebACL
+    Properties:
+      DefaultAction: 
+         Allow: {}
+      Scope: "REGIONAL"
+      VisibilityConfig:
+        SampledRequestsEnabled: true
+        CloudWatchMetricsEnabled: true
+        MetricName: "MyWebACLMetric"
+      Rules:
+       - Name: "AWSManagedCommonRuleSet"
+         Priority: 1
+         Statement:
+           ManagedRuleGroupStatement:
+            VendorName: "AWS"
+            Name: "AWSManagedRulesCommonRuleSet" 
+         OverrideAction:
+            None: {}
+         VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true 
+            MetricName: "CommonRuleSetMetric"
+
+  WAFLogConfig:  
+    Type: AWS::WAFv2::LoggingConfiguration
+    DependsOn: 
+    - WAFLogsResourcePolicy
+    - WAFLogGroup
+    Properties:     
+      LogDestinationConfigs: 
+      -  !GetAtt WAFLogGroup.Arn
+      ResourceArn: !GetAtt WebACL.Arn 
+
+  WAFLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub aws-waf-logs-${LogSuffix}
+      RetentionInDays: 30
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+
+  WebACLAssociation:
+    Type: AWS::WAFv2::WebACLAssociation
+    Properties:
+      ResourceArn: !GetAtt MyALB.LoadBalancerArn
+      WebACLArn: !GetAtt WebACL.Arn
+
+  WAFLogsResourcePolicy:
+    Type: AWS::Logs::ResourcePolicy   
+    Properties:
+      PolicyName: "WAFLogsPolicy" 
+      PolicyDocument: !Sub |
+        {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {"Service": "waf.amazonaws.com"} ,
+              "Action": ["logs:CreateLogStream","logs:PutLogEvents"],
+              "Resource": "${WAFLogGroup.Arn}:*"
+            }
+          ]
+        }    
